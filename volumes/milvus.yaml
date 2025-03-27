@@ -1,0 +1,13 @@
+minio:
+    address: s3.us-east-1.amazonaws.com # localhost # Address of MinIO/S3
+    port: 443 # 9000   # Port of MinIO/S3
+    accessKeyID: "AWS_ACCESS_KEY_ID" # minioadmin # accessKeyID of MinIO/S3
+    secretAccessKey: "AWS_SECRET_KEY" # minioadmin # MinIO/S3 encryption string
+    useSSL: false # Access to MinIO/S3 with SSL
+    bucketName: "bucket" # Bucket name in MinIO/S3
+    rootPath: files # The root path where the message is stored in MinIO/S3
+     # Whether to use IAM role to access S3/GCS instead of access/secret keys
+    # For more infomation, refer to
+    # aws: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html
+    # gcp: https://cloud.google.com/storage/docs/access-control/iam
+    useIAM: false
