@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 pymilvus = "*"
+pymongo = "*"
 
 [dev-packages]
 
