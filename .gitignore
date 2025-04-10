@@ -1,3 +1,6 @@
 volumes/milvus
 volumes/minio
 __pycache__
+
+# mac
+.DS_Store
