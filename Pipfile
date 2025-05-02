@@ -6,6 +6,10 @@ name = "pypi"
 [packages]
 pymilvus = "*"
 pymongo = "*"
+pandas = "*"
+numpy = "*"
+torch = "*"
+tables = "*"
 
 [dev-packages]
 
