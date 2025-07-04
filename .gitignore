@@ -13,3 +13,5 @@ datasets/*
 .idea/misc.xml
 .idea/workspace.xml
 .idea/inspectionProfiles/profiles_settings.xml
+data/Movies_final.csv
+data/Movies_clean_Vec_v4_25keywords.parquet
