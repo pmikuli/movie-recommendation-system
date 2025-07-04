@@ -6,3 +6,10 @@ __pycache__
 .DS_Store
 
 datasets/*
+/.venv/
+/data/ratings_groupped_ids.parquet
+/data/user_features_clean.parquet
+.idea/vcs.xml
+.idea/misc.xml
+.idea/workspace.xml
+.idea/inspectionProfiles/profiles_settings.xml
