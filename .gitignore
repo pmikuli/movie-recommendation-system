@@ -17,3 +17,4 @@ data/Movies_final.csv
 data/Movies_clean_Vec_v4_25keywords.parquet
 /data/old_data_to_few_movies/
 /data/
+/cold-start/
