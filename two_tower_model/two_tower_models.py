@@ -138,29 +138,27 @@ class ItemTower(nn.Module):
         output = self.final_mlp(input)                              # [B, D]
         i = F.normalize(output, dim=1)
         return i
+    
+class TwoTowerModel(nn.Module):
+    def __init__(self, stats_dim, n_items, vocab_sizes,
+                 dense_feat_dim, text_emb_dim, embedding_dim=EMB_DIM):
+        super().__init__()
+        self.user_tower = UserTower(stats_dim, n_items, embedding_dim)
+        self.item_tower = ItemTower(dense_feat_dim, text_emb_dim, vocab_sizes, embedding_dim)
 
+    def forward(self, batch):
+        u = self.user_tower(batch['user'])
+        i_pos = self.item_tower(batch, key="pos_item")
+        i_neg = self.item_tower(batch, key="neg_item")
 
+        if i_neg.dim() == 2:
+            return u, i_pos, i_neg # każdy [B, 64]
 
-device = torch.device('mps')
+        B, k, D = i_neg.shape
 
-stats_dim = 25
-n_items = 82932
-embedding_dim = EMB_DIM
-dense_feat_dim = 24
-text_emb_dim = 300
-num_actors = 11465
-num_directors = 5163
-num_genres = 20
-vocab_sizes = (num_actors, num_directors, num_genres)
+        i_neg_flat = i_neg.reshape(B*k, D) # Splaszczamy
 
+        u_flat = u.unsqueeze(1).expand(B, k, D).reshape(B*k, D)
+        pos_flat = i_pos.unsqueeze(1).expand(B, k, D).reshape(B*k, D)
 
-user_tower = UserTower(stats_dim, n_items, embedding_dim)
-user_tower.load_state_dict(torch.load('user_tower.pth', map_location='mps'))
-user_tower.to(device)
-user_tower.eval()
-
-item_tower = ItemTower(dense_feat_dim, text_emb_dim, vocab_sizes, embedding_dim)
-item_tower.load_state_dict(torch.load('item_tower.pth', map_location='mps'))
-item_tower.to(device)
-item_tower.eval()
-
+        return u_flat, pos_flat, i_neg_flat
