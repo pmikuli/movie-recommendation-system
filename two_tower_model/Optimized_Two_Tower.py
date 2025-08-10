@@ -26,7 +26,7 @@ from tqdm.auto import tqdm, trange
 import math
 import faiss
 import os
-
+import traceback
 
 # ========== CLASSES ==========
 
@@ -184,20 +184,22 @@ class MovieDataset(Dataset):
     '''
     Potrzebny do stworzenia matrix-a pod LOOCV
     '''
-    def __init__(self, df_movies, max_len_a, max_len_d, max_len_g):
+    def __init__(self, df_movies, max_len_a, max_len_d, max_len_g, idx_to_movieId):
         self.df = df_movies
         self.max_len_a = max_len_a
         self.max_len_d = max_len_d
         self.max_len_g = max_len_g
+        self.idx_to_movieId = idx_to_movieId
+
     def __len__(self):
         return len(self.df)
     def __getitem__(self, idx):
         m = self.df.iloc[idx]
-        return collect_movie_features(m, max_len_a, max_len_d, max_len_g)
+        return collect_movie_features(m, max_len_a, max_len_d, max_len_g, idx_to_movieId)
 
 class TwoTowerDataset(Dataset):
 
-    def __init__(self, df_users, df_ratings, df_movies, negative_sampler, max_len_a, max_len_d, max_len_g, k_negatives=50):
+    def __init__(self, df_users, df_ratings, df_movies, negative_sampler, max_len_a, max_len_d, max_len_g, idx_to_movieId, k_negatives=50):
         self.df_users = df_users.reset_index(drop=True)
         self.df_ratings = df_ratings
         self.df_movies = df_movies
@@ -208,6 +210,8 @@ class TwoTowerDataset(Dataset):
         self.max_len_g = max_len_g
 
         self.negative_sampler = negative_sampler
+
+        self.idx_to_movieId = idx_to_movieId
 
     def __len__(self):
         return len(self.df_users)
@@ -236,12 +240,12 @@ class TwoTowerDataset(Dataset):
 
         # --- COLLECT ITEMS ---
         m_pos = self.df_movies.loc[pos_id]
-        pos_feats, pos_text, pos_actors, pos_directors, pos_genres = collect_movie_features(m_pos, self.max_len_a, self.max_len_d, self.max_len_g)
+        _, pos_feats, pos_text, pos_actors, pos_directors, pos_genres = collect_movie_features(m_pos, self.max_len_a, self.max_len_d, self.max_len_g, self.idx_to_movieId)
 
         neg_feats_list, neg_text_list, neg_actor_list, neg_director_list, neg_genre_list = [], [], [], [], []
         for nid in neg_ids:
             m_neg = self.df_movies.loc[nid]
-            nf, nt, na, nd, ng = collect_movie_features(m_neg, self.max_len_a, self.max_len_d, self.max_len_g)
+            _, nf, nt, na, nd, ng = collect_movie_features(m_neg, self.max_len_a, self.max_len_d, self.max_len_g, self.idx_to_movieId)
             neg_feats_list.append(nf)
             neg_text_list.append(nt)
             neg_actor_list.append(na)
@@ -276,7 +280,7 @@ class ValidationDataset(Dataset):
     """
     Pod szybka walidacje ROC/AUC
     """
-    def __init__(self, df_users, df_ratings, df_movies, sampler, max_len_a, max_len_d, max_len_g, k_negatives=100):
+    def __init__(self, df_users, df_ratings, df_movies, sampler, max_len_a, max_len_d, max_len_g, idx_to_movieId, k_negatives=100):
         self.df_users = df_users.reset_index(drop=True)
         self.df_movies = df_movies
         self.k_negatives = k_negatives
@@ -287,6 +291,8 @@ class ValidationDataset(Dataset):
 
         print("ValidationDataset: Pre-sampling all negatives...")
         self.fixed_negatives = {}
+
+        self.idx_to_movieId = idx_to_movieId
 
         for user_id in tqdm(self.df_users['userId'], desc="Pre-sampling negatives"):
             user_data = df_ratings.loc[user_id]
@@ -313,12 +319,12 @@ class ValidationDataset(Dataset):
 
         # --- COLLECT ITEMS ---
         m_pos = self.df_movies.loc[pos_id]
-        pos_feats, pos_text, pos_actors, pos_directors, pos_genres = collect_movie_features(m_pos, self.max_len_a,self.max_len_d,self.max_len_g)
+        _, pos_feats, pos_text, pos_actors, pos_directors, pos_genres = collect_movie_features(m_pos, self.max_len_a,self.max_len_d,self.max_len_g, self.idx_to_movieId)
 
         neg_feats_list, neg_text_list, neg_actor_list, neg_director_list, neg_genre_list = [], [], [], [], []
         for nid in neg_ids:
             m_neg = self.df_movies.loc[nid]
-            nf, nt, na, nd, ng = collect_movie_features(m_neg, self.max_len_a, self.max_len_d, self.max_len_g)
+            _, nf, nt, na, nd, ng = collect_movie_features(m_neg, self.max_len_a, self.max_len_d, self.max_len_g, self.idx_to_movieId)
             neg_feats_list.append(nf)
             neg_text_list.append(nt)
             neg_actor_list.append(na)
@@ -430,6 +436,7 @@ class ItemTower(nn.Module):
         )
 
     def forward(self, batch, key: str = "pos_item"):
+        movieIds = batch[key]['movieIds']
         dense_feats = batch[key]['dense_features']  # [B, dense_feat_dim]
         text_emb = batch[key]['text_embedding']  # [B, text_emb_dim]
 
@@ -458,7 +465,7 @@ class ItemTower(nn.Module):
                 }
             }
 
-            emb_flat = self.forward(flat_batch, key)  # rekurencyjnie batch na embeddingi [B*k, D]
+            emb_flat, _ = self.forward(flat_batch, key)  # rekurencyjnie batch na embeddingi [B*k, D]
 
             return emb_flat.view(B, k, -1)  # [B, k, D]
 
@@ -479,7 +486,7 @@ class ItemTower(nn.Module):
         input = torch.cat([a, d, g, dense_vec, text_vec], dim=-1)  # [B, 5D]
         output = self.final_mlp(input)  # [B, D]
         i = F.normalize(output, dim=1)
-        return i
+        return i, movieIds
 
 class TwoTowerModel(nn.Module):
     def __init__(self, stats_dim, n_items, vocab_sizes,
@@ -522,7 +529,7 @@ def collect_user_features(u):
 
     return movies_seq, ratings_seq, ts_seq, user_stats
 
-def collect_movie_features(m, max_len_a, max_len_d, max_len_g):
+def collect_movie_features(m, max_len_a, max_len_d, max_len_g, idx_to_movieId):
     """
     Zwraca cztery tensory: combined, actor_ids, director_ids, genre_ids
     """
@@ -556,9 +563,11 @@ def collect_movie_features(m, max_len_a, max_len_d, max_len_g):
     director_ids = pad(m.director_ids, max_len_d)
     genre_ids = pad(m.genre_ids, max_len_g)
 
-    return dense_feats, text_emb, actor_ids, director_ids, genre_ids
+    movieId = idx_to_movieId[m.name] # pandas Series name because movieId was moved to the index
 
-def build_faiss_index_for_movies(df_movies, max_len_a, max_len_d, max_len_g):
+    return movieId, dense_feats, text_emb, actor_ids, director_ids, genre_ids
+
+def build_faiss_index_for_movies(df_movies, max_len_a, max_len_d, max_len_g, idx_to_movieId):
     '''
     Do poczatkowego zbudowania macierzy embeedingow dla FAISS, do szukania najblizszych sasiadow
     '''
@@ -567,9 +576,9 @@ def build_faiss_index_for_movies(df_movies, max_len_a, max_len_d, max_len_g):
 
     for i, m_id in enumerate(df_movies.index):
         try:
-            dense_feats, text_emb, *_ = collect_movie_features(
+            _, dense_feats, text_emb, *_ = collect_movie_features(
                 df_movies.loc[m_id],
-                max_len_a, max_len_d, max_len_g
+                max_len_a, max_len_d, max_len_g, idx_to_movieId
             )
             combined = torch.cat([dense_feats, text_emb], dim=0)
             # normalizujemy L2 na potrzeby FAISS cosinusowego (wyplaszczanie)
@@ -582,6 +591,7 @@ def build_faiss_index_for_movies(df_movies, max_len_a, max_len_d, max_len_g):
 
         except Exception as e:
             print(f" Blad przy przetwarzaniu filmu {m_id}: {e}")
+            traceback.print_exc()
             continue
 
     movie_matrix = torch.stack(movie_vecs)          # macierz [n_movies, D]
@@ -605,6 +615,7 @@ def build_faiss_index_for_movies(df_movies, max_len_a, max_len_d, max_len_g):
 
 def collate_movies(batch):
 
+    movieIds_list = []
     dense_features_list = []
     text_embedding_list = []
     actor_ids_list = []
@@ -612,8 +623,9 @@ def collate_movies(batch):
     genre_ids_list = []
 
     for row in batch:
-        dense_features, text_embedding, actor_ids, director_ids, genre_ids = row
+        movieIds, dense_features, text_embedding, actor_ids, director_ids, genre_ids = row
 
+        movieIds_list.append(movieIds)
         dense_features_list.append(dense_features)
         text_embedding_list.append(text_embedding)
         actor_ids_list.append(actor_ids)
@@ -622,6 +634,7 @@ def collate_movies(batch):
 
     batch_movie = {
         'pos_item': {
+            'movieIds': torch.stack(movieIds_list),
             'dense_features': torch.stack(dense_features_list),     # [B, dense_feat_dim]
             'text_embedding': torch.stack(text_embedding_list),     # [B, text_emb_dim]
             'actor_ids': torch.stack(actor_ids_list),               # [B, max_len_a]
@@ -866,8 +879,9 @@ def heavy_evaluate(model,user_loader,item_embs_np,
 def prepare():
     DEBUG = True
     print("CUDA available:", torch.cuda.is_available())
-    print("Number of GPUs:", torch.cuda.device_count())
-    print("Current device:", torch.cuda.current_device(), torch.cuda.get_device_name(0))
+    if torch.cuda.is_available():
+        print("Number of GPUs:", torch.cuda.device_count())
+        print("Current device:", torch.cuda.current_device(), torch.cuda.get_device_name(0))
 
     # ---------- DATA LOADING ----------
     BASE_DIR = Path(os.getcwd()).parent
@@ -1037,12 +1051,14 @@ def prepare():
 
     print(num_actors, num_directors, num_genres)
 
-    return df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres
+    idx_to_movieId = {v: k for k, v in movieId_to_idx.items()}
 
-def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres):
+    return df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres, idx_to_movieId
+
+def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres, idx_to_movieId):
     # ---------- PRZYGOTOWANIE INDEKSU FAISS ----------
     initial_faiss_index, initial_movie_matrix_np, initial_local_to_movie, initial_movie_to_local = build_faiss_index_for_movies(
-        df_movies, max_len_a, max_len_d, max_len_g)
+        df_movies, max_len_a, max_len_d, max_len_g, idx_to_movieId)
     '''
     Przepisanie poczatkowego - FAISS index
     '''
@@ -1088,7 +1104,7 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
     TEST DATASETU I ODPOWIEDNIEGO OUTPUTU POJEDYNCZEGO OBIEKTU GET_ITEM
     '''
 
-    dataset_test = TwoTowerDataset(df_users, df_ratings, df_movies, sampler, max_len_a, max_len_d, max_len_g)
+    dataset_test = TwoTowerDataset(df_users, df_ratings, df_movies, sampler, max_len_a, max_len_d, max_len_g, idx_to_movieId)
 
     sample0 = dataset_test[0]
 
@@ -1117,7 +1133,8 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
         k_negatives=50,
         max_len_a=max_len_a,
         max_len_d=max_len_d,
-        max_len_g=max_len_g
+        max_len_g=max_len_g, 
+        idx_to_movieId=idx_to_movieId
     )
 
     train_loader = DataLoader(
@@ -1144,7 +1161,8 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
         k_negatives=100,
         max_len_a=max_len_a,
         max_len_d=max_len_d,
-        max_len_g=max_len_g
+        max_len_g=max_len_g,
+        idx_to_movieId=idx_to_movieId
     )
 
     val_loader = DataLoader(
@@ -1176,7 +1194,7 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
     Do wczytania i obliczania item embeedings
     '''
     movie_loader = DataLoader(
-        MovieDataset(df_movies, max_len_a, max_len_d, max_len_g),
+        MovieDataset(df_movies, max_len_a, max_len_d, max_len_g, idx_to_movieId),
         batch_size = 8192,
         collate_fn = collate_movies
     )
@@ -1257,8 +1275,8 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
     model.eval()
 
 if __name__ == '__main__':
-    df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres = prepare()
+    df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres, idx_to_movieId = prepare()
 
-    train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres)
+    train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres, idx_to_movieId)
 
 
