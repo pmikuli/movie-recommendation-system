@@ -700,14 +700,14 @@ def to_device(data, device):
 '''
 Przygotowanie matrix-u do leave-one-out w celu 'score' do rankingu
 '''
-def compute_item_embeddings(model, movie_loader, device):
-    model.eval()
+def compute_item_embeddings(item_tower, movie_loader, device):
+    item_tower.eval()
     all_embs = []
     with torch.no_grad():
         for mb in movie_loader:
             mb = to_device(mb, device)
 
-            embs = model.item_tower(mb, key='pos_item')  # [batch_size, D]
+            embs = item_tower(mb, key='pos_item')  # [batch_size, D]
             all_embs.append(embs)
     return torch.cat(all_embs, dim=0).cpu().numpy()  # [n_movies, D]
 
@@ -1213,7 +1213,7 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
 
         if epoch % 3 == 0:
 
-            learned_movie_matrix_np = compute_item_embeddings(model,
+            learned_movie_matrix_np = compute_item_embeddings(model.item_tower,
                                                               movie_loader, device)  # [n_movies, D] wyliczamy embeedingi filmow
             D = learned_movie_matrix_np.shape[1]
 

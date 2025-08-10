@@ -1,65 +1,82 @@
 import torch
 import pandas as pd
 from pathlib import Path
-from two_tower_models import ItemTower, UserTower
+from Optimized_Two_Tower import ItemTower, build_faiss_index_for_movies, NegativeSampler, MovieDataset, collate_movies, compute_item_embeddings, prepare
 import os
+from itertools import chain
+import numpy as np
+from torch.utils.data import DataLoader
+import vectordatabase
 
 EMB_DIM = 64
 
-location = 'cpu'
-device = torch.device('cpu')
-if torch.cuda.is_available():
-    device = torch.device('cuda')
-    locatino = 'cuda'
-elif torch.mps.is_available():
-    device = torch.device('mps')
-    location = 'mps'
-print('Device:', device)
+def get_item_tower():
+    location = 'cpu'
+    device = torch.device('cpu')
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+        location = 'cuda'
+    elif torch.mps.is_available():
+        device = torch.device('mps')
+        location = 'mps'
+    print('Device:', device)
 
-stats_dim = 25
-n_items = 82779
-embedding_dim = EMB_DIM
-dense_feat_dim = 24
-text_emb_dim = 300
-num_actors = 11465
-num_directors = 5163
-num_genres = 20
-vocab_sizes = (num_actors, num_directors, num_genres)
+    # stats_dim = 25
+    # n_items = 82779
+    embedding_dim = EMB_DIM
+    dense_feat_dim = 24
+    text_emb_dim = 300
+    num_actors = 11465
+    num_directors = 5163
+    num_genres = 20
+    vocab_sizes = (num_actors, num_directors, num_genres)
 
 
-# user_tower = UserTower(stats_dim, n_items, embedding_dim)
-# user_tower.load_state_dict(torch.load('user_tower.pth', map_location=location))
-# user_tower.to(device)
-# user_tower.eval()
+    # user_tower = UserTower(stats_dim, n_items, embedding_dim)
+    # user_tower.load_state_dict(torch.load('user_tower.pth', map_location=location))
+    # user_tower.to(device)
+    # user_tower.eval()
 
-item_tower = ItemTower(dense_feat_dim, text_emb_dim, vocab_sizes, embedding_dim)
-item_tower.load_state_dict(torch.load('item_tower.pth', map_location=location))
-item_tower.to(device)
-item_tower.eval()
+    item_tower = ItemTower(dense_feat_dim, text_emb_dim, vocab_sizes, embedding_dim)
+    item_tower.load_state_dict(torch.load('item_tower.pth', map_location=location))
+    item_tower.to(device)
 
-print('Models loaded')
+    return item_tower, device
 
-BASE_DIR = Path(os.getcwd()).parent
-DATA_DIR = BASE_DIR / "datasets"
+def generate_embeddings_and_send_to_milvus(df_movies, idx_to_movieId):
+    item_tower, device = get_item_tower()
 
-df_users = pd.read_parquet(DATA_DIR / 'user_features_clean_warm.parquet')
+    num_workers_prep = 4            #os.cpu_count() // 2 => 8
+    print(f"Using {num_workers_prep} workers for DataLoaders.")
 
-df_movies = pd.read_parquet(DATA_DIR / 'Movies_clean_Vec_v4_25keywords.parquet')
 
-df_ratings = pd.read_parquet(DATA_DIR / 'ratings_groupped_20pos.parquet')
+    movie_loader = DataLoader(
+        MovieDataset(df_movies, max_len_a, max_len_d, max_len_g),
+        batch_size = 8192,
+        collate_fn = collate_movies,
+        shuffle=False
+    )
 
-df_LOOCV = pd.read_parquet(DATA_DIR / 'ratings_LOOCV.parquet')
+    movie_embeddings_np = compute_item_embeddings(item_tower, movie_loader, device)
+    print(f"Shape of the new matrix to be added: {movie_embeddings_np.shape}")
 
-users_set = set(df_users['userId'])
-loocv_set = set(df_LOOCV['userId'])
+    movie_idxs_in_order = df_movies.index.to_numpy()
+    movie_ids_in_order = [idx_to_movieId[idx] for idx in movie_idxs_in_order]
+    print(f"First 20 items fo movie_ids_in_order: {movie_ids_in_order[:20]}")
 
-print(f"Same users? {users_set == loocv_set}")
-print(f"Users not in LOOCV: {len(users_set - loocv_set)}")
-print(f"LOOCV not in users: {len(loocv_set - users_set)}")
+    assert len(movie_embeddings_np) == len(movie_ids_in_order), "Mismatch between number of embeddings and number of movie IDs!"
 
-if len(users_set) == len(loocv_set) and users_set == loocv_set:
-    print("df_LOOCV contains all users from df_users")
-else:
-    print("df_LOOCV is subset/different from df_users")
+    vectors = [{'id': movieId, 'vector': embedding} for movieId, embedding in zip(movie_ids_in_order, movie_embeddings_np)]
 
-print('Datasets loaded')
+    vectordatabase.connect()
+    vectordatabase.insert_vector('movies', vectors)
+
+    print('Inserted to db')
+
+if __name__ == '__main__':
+    df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres = prepare()
+
+    idx_to_movieId = {v: k for k,v in movieId_to_idx.items()}
+
+    generate_embeddings_and_send_to_milvus(df_movies, idx_to_movieId)
+    

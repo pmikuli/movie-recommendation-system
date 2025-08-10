@@ -1,4 +1,4 @@
-import vectordatabase
+import two_tower_model.vectordatabase as vectordatabase
 
 import random
 
