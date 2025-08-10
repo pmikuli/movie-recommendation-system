@@ -866,8 +866,9 @@ def heavy_evaluate(model,user_loader,item_embs_np,
 def prepare():
     DEBUG = True
     print("CUDA available:", torch.cuda.is_available())
-    print("Number of GPUs:", torch.cuda.device_count())
-    print("Current device:", torch.cuda.current_device(), torch.cuda.get_device_name(0))
+    if torch.cuda.is_available():
+        print("Number of GPUs:", torch.cuda.device_count())
+        print("Current device:", torch.cuda.current_device(), torch.cuda.get_device_name(0))
 
     # ---------- DATA LOADING ----------
     BASE_DIR = Path(os.getcwd()).parent
