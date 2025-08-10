@@ -193,7 +193,7 @@ class MovieDataset(Dataset):
         return len(self.df)
     def __getitem__(self, idx):
         m = self.df.iloc[idx]
-        return collect_movie_features(m, max_len_a, max_len_d, max_len_g)
+        return collect_movie_features(m, self.max_len_a, self.max_len_d, self.max_len_g)
 
 class TwoTowerDataset(Dataset):
 
