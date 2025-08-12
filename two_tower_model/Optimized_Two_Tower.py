@@ -84,7 +84,7 @@ class NegativeSampler:
         assert math.isclose(sum(self.regular_user_recipe_pct.values()), 1.0), "Recipe percentages must sum to 1.0"
 
         interaction_counts = self.df_ratings['seen'].str.len()
-        heavy_user_threshold = interaction_counts.quantile(0.90)
+        heavy_user_threshold = interaction_counts.quantile(0.80)
         self.heavy_users = set(interaction_counts[interaction_counts >= heavy_user_threshold].index)
         print(f"Identified {len(self.heavy_users):,} heavy users (>= {int(heavy_user_threshold)} interactions).")
 
@@ -238,15 +238,20 @@ class TwoTowerDataset(Dataset):
         m_pos = self.df_movies.loc[pos_id]
         pos_feats, pos_text, pos_actors, pos_directors, pos_genres = collect_movie_features(m_pos, self.max_len_a, self.max_len_d, self.max_len_g)
 
-        neg_feats_list, neg_text_list, neg_actor_list, neg_director_list, neg_genre_list = [], [], [], [], []
-        for nid in neg_ids:
-            m_neg = self.df_movies.loc[nid]
-            nf, nt, na, nd, ng = collect_movie_features(m_neg, self.max_len_a, self.max_len_d, self.max_len_g)
-            neg_feats_list.append(nf)
-            neg_text_list.append(nt)
-            neg_actor_list.append(na)
-            neg_director_list.append(nd)
-            neg_genre_list.append(ng)
+        neg_movies_df = self.df_movies.loc[neg_ids]
+
+        neg_feats, neg_text, neg_actors, neg_directors, neg_genres = collect_movie_features_batch(
+            neg_movies_df, self.max_len_a, self.max_len_d, self.max_len_g
+        )
+        # neg_feats_list, neg_text_list, neg_actor_list, neg_director_list, neg_genre_list = [], [], [], [], []
+        # for nid in neg_ids:
+        #     m_neg = self.df_movies.loc[nid]
+        #     nf, nt, na, nd, ng = collect_movie_features(m_neg, self.max_len_a, self.max_len_d, self.max_len_g)
+        #     neg_feats_list.append(nf)
+        #     neg_text_list.append(nt)
+        #     neg_actor_list.append(na)
+        #     neg_director_list.append(nd)
+        #     neg_genre_list.append(ng)
 
         return {
             'user': {
@@ -262,89 +267,19 @@ class TwoTowerDataset(Dataset):
                 'director_ids': pos_directors,
                 'genre_ids': pos_genres,
             },
+            # 'neg_item': {
+            #     'dense_features':  torch.stack(neg_feats_list),    # [k, dense_feat_dim]
+            #     'text_embedding':  torch.stack(neg_text_list),     # [k, text_emb_dim]
+            #     'actor_ids':       torch.stack(neg_actor_list),    # [k, max_len_a]
+            #     'director_ids':    torch.stack(neg_director_list), # [k, max_len_d]
+            #     'genre_ids':       torch.stack(neg_genre_list),    # [k, max_len_g]
+            # }
             'neg_item': {
-                'dense_features':  torch.stack(neg_feats_list),    # [k, dense_feat_dim]
-                'text_embedding':  torch.stack(neg_text_list),     # [k, text_emb_dim]
-                'actor_ids':       torch.stack(neg_actor_list),    # [k, max_len_a]
-                'director_ids':    torch.stack(neg_director_list), # [k, max_len_d]
-                'genre_ids':       torch.stack(neg_genre_list),    # [k, max_len_g]
-            }
-        }
-
-
-class ValidationDataset(Dataset):
-    """
-    Pod szybka walidacje ROC/AUC
-    """
-    def __init__(self, df_users, df_ratings, df_movies, sampler, max_len_a, max_len_d, max_len_g, k_negatives=100):
-        self.df_users = df_users.reset_index(drop=True)
-        self.df_movies = df_movies
-        self.k_negatives = k_negatives
-
-        self.max_len_a = max_len_a
-        self.max_len_d = max_len_d
-        self.max_len_g = max_len_g
-
-        print("ValidationDataset: Pre-sampling all negatives...")
-        self.fixed_negatives = {}
-
-        for user_id in tqdm(self.df_users['userId'], desc="Pre-sampling negatives"):
-            user_data = df_ratings.loc[user_id]
-            pos_list = user_data['pos']
-            if not pos_list: continue
-
-            pos_id = pos_list[0]                # Uzywamy dla powtarzalnych wynikow
-            self.fixed_negatives[user_id] = {
-                'pos': pos_id,
-                'neg': sampler.sample(user_id, pos_id, k_negatives)
-            }
-        print("Pre-sampling complete.")
-
-    def __len__(self):
-        return len(self.df_users)
-
-    def __getitem__(self, idx):
-        u_row = self.df_users.iloc[idx]
-        movies_seq, ratings_seq, ts_seq, user_stats = collect_user_features(u_row)
-        user_id = u_row['userId']
-
-        pos_id = self.fixed_negatives[user_id]['pos']
-        neg_ids = self.fixed_negatives[user_id]['neg']
-
-        # --- COLLECT ITEMS ---
-        m_pos = self.df_movies.loc[pos_id]
-        pos_feats, pos_text, pos_actors, pos_directors, pos_genres = collect_movie_features(m_pos, self.max_len_a,self.max_len_d,self.max_len_g)
-
-        neg_feats_list, neg_text_list, neg_actor_list, neg_director_list, neg_genre_list = [], [], [], [], []
-        for nid in neg_ids:
-            m_neg = self.df_movies.loc[nid]
-            nf, nt, na, nd, ng = collect_movie_features(m_neg, self.max_len_a, self.max_len_d, self.max_len_g)
-            neg_feats_list.append(nf)
-            neg_text_list.append(nt)
-            neg_actor_list.append(na)
-            neg_director_list.append(nd)
-            neg_genre_list.append(ng)
-
-        return {
-            'user': {
-                'user_statistics': user_stats,
-                'movies': movies_seq,
-                'ratings': ratings_seq,
-                'times': ts_seq,
-            },
-            'pos_item': {
-                'dense_features': pos_feats,
-                'text_embedding': pos_text,
-                'actor_ids': pos_actors,
-                'director_ids': pos_directors,
-                'genre_ids': pos_genres,
-            },
-            'neg_item': {
-                'dense_features': torch.stack(neg_feats_list),  # [k, dense_feat_dim]
-                'text_embedding': torch.stack(neg_text_list),   # [k, text_emb_dim]
-                'actor_ids': torch.stack(neg_actor_list),       # [k, max_len_a]
-                'director_ids': torch.stack(neg_director_list), # [k, max_len_d]
-                'genre_ids': torch.stack(neg_genre_list),       # [k, max_len_g]
+                'dense_features': neg_feats,
+                'text_embedding': neg_text,
+                'actor_ids': neg_actors,
+                'director_ids': neg_directors,
+                'genre_ids': neg_genres,
             }
         }
 
@@ -558,6 +493,30 @@ def collect_movie_features(m, max_len_a, max_len_d, max_len_g):
 
     return dense_feats, text_emb, actor_ids, director_ids, genre_ids
 
+def collect_movie_features_batch(df_batch, max_len_a, max_len_d, max_len_g):
+    """
+    VECTORIZED version of collect_movie_features.
+    Processes a DataFrame of movies at once, avoiding loops.
+    """
+
+    numeric = df_batch[['runtime', 'engagement_score', 'cast_importance', 'director_score']].values
+    binary = df_batch[['if_blockbuster', 'highly_watched', 'highly_rated', 'has_keywords', 'has_cast', 'has_director']].values
+    decades = df_batch[[c for c in df_batch.columns if c.startswith('decade_')]].astype(int).values
+
+    dense_feats = torch.tensor(np.hstack([numeric, binary, decades]), dtype=torch.float32)
+    text_emb = torch.tensor(np.vstack(df_batch['text_embedded'].values), dtype=torch.float32)
+
+    def pad(seq, L):
+        seq_list = list(seq) if not isinstance(seq, list) else seq
+        padded = seq_list[:L] + [0] * max(0, L - len(seq_list))
+        return torch.tensor(padded, dtype=torch.long)
+
+    actor_ids = torch.stack(df_batch['actor_ids'].apply(lambda seq: pad(seq, max_len_a)).tolist())
+    director_ids = torch.stack(df_batch['director_ids'].apply(lambda seq: pad(seq, max_len_d)).tolist())
+    genre_ids = torch.stack(df_batch['genre_ids'].apply(lambda seq: pad(seq, max_len_g)).tolist())
+
+    return dense_feats, text_emb, actor_ids, director_ids, genre_ids
+
 def build_faiss_index_for_movies(df_movies, max_len_a, max_len_d, max_len_g):
     '''
     Do poczatkowego zbudowania macierzy embeedingow dla FAISS, do szukania najblizszych sasiadow
@@ -697,10 +656,10 @@ def to_device(data, device):
     else:
         return data
 
-'''
-Przygotowanie matrix-u do leave-one-out w celu 'score' do rankingu
-'''
 def compute_item_embeddings(item_tower, movie_loader, device):
+    '''
+    Przygotowanie matrix-u do leave-one-out w celu 'score' do rankingu
+    '''
     item_tower.eval()
     all_embs = []
     with torch.no_grad():
@@ -711,24 +670,30 @@ def compute_item_embeddings(item_tower, movie_loader, device):
             all_embs.append(embs)
     return torch.cat(all_embs, dim=0).cpu().numpy()  # [n_movies, D]
 
-'''
-Definicja loss-u BPR (Bayesian Personalized Ranking)
-'''
+
 def bpr_loss(u, i_pos, i_neg):
+    '''
+    Definicja loss-u BPR (Bayesian Personalized Ranking)
+    '''
     pos = (u*i_pos).sum(1) # [B] score pozytywnych par
     neg = (u*i_neg).sum(1)
     return -torch.log(torch.sigmoid(pos-neg) + 1e-8).mean()
 
-'''
-Trenowanie jednej epoki, dodano odpowiednie inputy tez do testow i ewentualnych zmian
+def triplet_loss(u, i_pos, i_neg, margin=0.2):
+    """
+    Definicja Triplet Loss
+    Wypycha pozytywne itemy by byly lepsze o margin wzgledem negatywow
+    """
+    pos_scores = (u * i_pos).sum(dim=1)  # [B*k]
+    neg_scores = (u * i_neg).sum(dim=1)  # [B*k]
 
-Obecnie:
-- model: TwoTowerModel
-- loader: DataLoader
-- optimizer: Adam
-- loss: bpr_loss
-'''
+    losses = torch.relu(margin - (pos_scores - neg_scores)) # max(0, margin - (pos_score - neg_score))
+    return losses.mean()
+
 def train_one_epoch(model, loader, optimizer, device, epoch):
+    '''
+    Trenowanie jednej epoki, dodano odpowiednie inputy tez do testow i ewentualnych zmian
+    '''
     model.train()
     running_loss = 0.0
 
@@ -738,7 +703,8 @@ def train_one_epoch(model, loader, optimizer, device, epoch):
 
         user_vec, pos_vec, neg_vec = model(batch) # forward do TwoTowerModel
 
-        loss = bpr_loss(user_vec, pos_vec, neg_vec)
+        # loss = bpr_loss(user_vec, pos_vec, neg_vec)
+        loss = triplet_loss(user_vec, pos_vec, neg_vec, margin=0.2)
 
         loss.backward() # Backword i updatujemy parametry
 
@@ -772,17 +738,19 @@ def compute_validation_loss(model, val_loader, device):
 
             user_vec, pos_vec, neg_vec = model(batch)
 
-            loss = bpr_loss(user_vec, pos_vec, neg_vec)
+            # loss = bpr_loss(user_vec, pos_vec, neg_vec)
+            loss = triplet_loss(user_vec, pos_vec, neg_vec, margin=0.2)
+
             total_loss += loss
             num_batches += 1
 
     avg_loss = (total_loss / num_batches).item() # Do wyliczania sredniej straty w epoce
     return avg_loss
 
-'''
-Lekka ewaluacja majaca za zadanie pokazac czy model sie uczy, niz odpowiadac jak dobrze tworzy ranking
-'''
 def light_evaluate(model, loader, device):
+    '''
+    Lekka ewaluacja majaca za zadanie pokazac czy model sie uczy, niz odpowiadac jak dobrze tworzy ranking
+    '''
     model.eval()
     aucs, paac = [], []
 
@@ -805,11 +773,11 @@ def light_evaluate(model, loader, device):
 
     return float(np.mean(aucs)), float(np.mean(paac))
 
-'''
-Dokladniejsza ewaluacja majaca odpowiedziec jak model radzi sobie z rankingiem dla danych uzytkownikow
-'''
 def heavy_evaluate(model,user_loader,item_embs_np,
                         train_pos_sets,test_pos,top_N, val_user_ids, device):
+    '''
+    Dokladniejsza ewaluacja majaca odpowiedziec jak model radzi sobie z rankingiem dla danych uzytkownikow
+    '''
     model.eval()
     user_embs = []
 
@@ -864,7 +832,7 @@ def heavy_evaluate(model,user_loader,item_embs_np,
     return float(np.mean(recalls)), float(np.mean(mrrs)), float(np.mean(ndcgs))
 
 def prepare():
-    DEBUG = True
+    DEBUG = False
     print("CUDA available:", torch.cuda.is_available())
     if torch.cuda.is_available():
         print("Number of GPUs:", torch.cuda.device_count())
@@ -1041,6 +1009,7 @@ def prepare():
     return df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres
 
 def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres):
+
     # ---------- PRZYGOTOWANIE INDEKSU FAISS ----------
     initial_faiss_index, initial_movie_matrix_np, initial_local_to_movie, initial_movie_to_local = build_faiss_index_for_movies(
         df_movies, max_len_a, max_len_d, max_len_g)
@@ -1056,7 +1025,7 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
     '''
     Wielkosc batcha zalezna od pamieci GPU
     '''
-    BATCH_SIZE = 2048
+    BATCH_SIZE = 4096
     EMB_DIM = 64
     EPOCHS = 50
     TOP_N = 20
@@ -1064,10 +1033,10 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
     '''
     Early stopping
     '''
-    best_rank = 0.0  # dla metryk, które chcemy maksymalizować (np. ROC-AUC)
+    best_rank = 0.0             # dla metryk, które chcemy maksymalizować (np. ROC-AUC)
     epochs_no_improve = 0
-    patience = 4  # maksymalna liczba epok bez poprawy
-    save_path = "best_model.pt"  # gdzie będziemy dumpować najlepszy model
+    patience = 4                # maksymalna liczba epok bez poprawy
+    save_path = "best_model.pt" # gdzie będziemy dumpować najlepszy model
 
     '''
     Przygotowanie workerow do treningu
@@ -1078,8 +1047,8 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
     sampler = NegativeSampler(
         df_ratings,
         df_movies,
-        initial_faiss_index,
-        initial_movie_matrix_np,
+        faiss_index,
+        movie_matrix_np,
         movie_to_local,
         local_to_movie
     )
@@ -1137,11 +1106,11 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
     '''
     val_user_ids = df_LOOCV['userId'].tolist()
 
-    val_dataset = ValidationDataset(
+    val_dataset = TwoTowerDataset(
         df_users,
         df_ratings,
         df_movies,
-        sampler=sampler,
+        negative_sampler=sampler,
         k_negatives=100,
         max_len_a=max_len_a,
         max_len_d=max_len_d,
@@ -1197,7 +1166,7 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
                            text_emb_dim=300,
                            embedding_dim=EMB_DIM)
              .to(device))
-    optimizer = optim.Adam(model.parameters(), lr=2e-4, weight_decay=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=2e-4, weight_decay=1e-4) # Najlepsze pod probke 10k: lr=2e-4, weight_decay=1e-4
     # scheduler = CosineAnnealingLR(optimizer, T_max=EPOCHS) # zmieniamy LR zgodnie z kosinusem (powinno stabilizowac trening)
     scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=3, verbose=True)
 
@@ -1207,11 +1176,11 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
         val_loss = compute_validation_loss(model, val_loader, device)  # Val loss
 
         print(f"Epoch {epoch:2d} | train_loss={tr_loss:.4f} | val_loss={val_loss:.4f}")
-        if epoch % 2 == 0:
-            auc, pair_acc = light_evaluate(model, val_loader, device)
-            print(f"LIGHT eval | val ROC-AUC={auc:.4f} | pair-acc={pair_acc:.4f}")
 
         if epoch % 3 == 0:
+
+            auc, pair_acc = light_evaluate(model, val_loader, device)
+            print(f"LIGHT eval | val ROC-AUC={auc:.4f} | pair-acc={pair_acc:.4f}")
 
             learned_movie_matrix_np = compute_item_embeddings(model.item_tower,
                                                               movie_loader, device)  # [n_movies, D] wyliczamy embeedingi filmow
@@ -1256,6 +1225,23 @@ def train(df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, ma
 
     model.load_state_dict(torch.load(save_path))
     model.eval()
+
+    # ---------- ZAPIS NA ODDZIELNE WIEZE ----------
+    print(f"Training complete. Best nDCG: {best_rank:.4f}")
+
+    final_model = TwoTowerModel(stats_dim=25,
+                                n_items=n_items,
+                                vocab_sizes=(num_actors, num_directors, num_genres),
+                                dense_feat_dim=24,
+                                text_emb_dim=300,
+                                embedding_dim=EMB_DIM)
+
+    final_model.load_state_dict(torch.load(save_path))
+    final_model.to(device)
+    final_model.eval()
+
+    torch.save(final_model.user_tower.state_dict(), 'user_tower.pth')
+    torch.save(final_model.item_tower.state_dict(), 'item_tower.pth')
 
 if __name__ == '__main__':
     df_users, df_ratings, df_movies, df_LOOCV, movieId_to_idx, n_items, max_len_a, max_len_d, max_len_g, num_actors, num_directors, num_genres = prepare()
