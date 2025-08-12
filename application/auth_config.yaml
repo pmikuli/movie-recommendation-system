@@ -1,0 +1,16 @@
+cookie:
+  name: my_app_cookie
+  key: some_secret_key_123
+  expiry_days: 1
+
+credentials:
+  usernames:
+    alice:
+      name: Ania Nowak
+      password: pass
+    bob:
+      name: Bartek Kowalski
+      password: pass
+    admin:
+      name: Admin
+      password: admin
