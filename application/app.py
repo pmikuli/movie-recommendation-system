@@ -341,9 +341,6 @@ if st.session_state["authentication_status"]:
         reset_page()
 
     n_pages = max(1, -(-len(filtered) // PAGE_SIZE))
-
-    print(f"SESSION PAGE: {st.session_state.page}")
-
     start = st.session_state.page * PAGE_SIZE
     page_items = filtered.iloc[start:start + PAGE_SIZE]
 
@@ -396,10 +393,14 @@ if st.session_state["authentication_status"]:
                     """, unsafe_allow_html=True)
 
                 key = f"rate_{row.movieId}"
-                default = st.session_state["ratings"].get(row.movieId, None)
+                rating_data = st.session_state["ratings"].get(row.movieId, None)
+
+                default_value = None
+                if isinstance(rating_data, dict):
+                    default_value = rating_data.get("value")
 
                 if key not in st.session_state:
-                    st.session_state[key] = default
+                    st.session_state[key] = default_value
 
                 col_l, col_c, col_r = st.columns([1, 3, 1])
                 with col_c:
@@ -414,6 +415,11 @@ if st.session_state["authentication_status"]:
 
     with col_next:
         st.button("Next »", on_click=next_page,disabled=st.session_state.page >= n_pages - 1, use_container_width=True)
+
+    print(f"SESSION PAGE: {st.session_state.page}")
+
+    start = st.session_state.page * PAGE_SIZE
+    page_items = filtered.iloc[start:start + PAGE_SIZE]
 
 
 elif st.session_state["authentication_status"] is False:
