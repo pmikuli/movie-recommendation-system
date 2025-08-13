@@ -1,11 +1,12 @@
 import base64
 import threading
 import time
+from datetime import datetime
 
 import streamlit as st
 import pandas as pd
 from streamlit_authenticator import LoginError
-from streamlit_star_rating import st_star_rating
+# from streamlit_star_rating import st_star_rating
 from st_keyup import st_keyup
 
 import streamlit_authenticator as stauth
@@ -31,42 +32,63 @@ div[data-testid="stSidebar"] > div:first-child {
     padding: 0.5rem 1rem;
 }
 .movie-card {
+    background: #262730;
     position: relative;
     padding: 5px;
-    transition: all 0.2s ease;
-    height: 50px; /* stała wysokość karty */
+    margin-bottom: 20px;
+    border-radius: 15px;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    min-height: 600px;
+    max-width: 300px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.movie-card:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 .movie-card img {
     width: 100%;
-    height: 250px;
+    height: 400px;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: 15px;
+    margin-bottom: 8px;
 }
-.movie-card .title {
+.title {
     text-align: center;
     margin-top: 8px;
     font-weight: bold;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 1.2rem; 
+    margin-bottom: 8px;
 }
-.movie-card .genres {
+.genres {
     font-size: 0.85rem;
     overflow: hidden;
+    margin-bottom: 5x;
 }
-.movie-card .stars-container {
-    margin-top: auto; /* pushes stars to bottom */
+.stars-container {
+    margin-top: auto;
     text-align: center;
+    padding-top: 8px;
+    padding-bottom: 5px;
+}
+.rated-on {
+    text-align: center;
+    font-size: 0.9rem;
+    color: #bbb;
+    margin-bottom: 0.5rem;
+}
+div[role="radiogroup"] {
+    margin-left: 10px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # --- USTAWIENIA APLIKACJI ---
-PAGE_SIZE = 20
-NUM_COLS = 4
+PAGE_SIZE = 30
+NUM_COLS = 5
 
 DEBOUNCE_MS = 1000
 MIN_CHARS = 2
@@ -74,8 +96,46 @@ MIN_CHARS = 2
 TMDB_BASE = "https://image.tmdb.org/t/p/w600_and_h900_bestv2"
 IMDB_BASE = "https://www.imdb.com/title/"
 
+# --- USTAWIENIA STRONY ---
+st.set_page_config(page_title="MovieForMe", page_icon="🎬")
+
+def img_to_base64(path):
+    with open(path, "rb") as f:
+        data = f.read()
+    encoded = base64.b64encode(data).decode()
+    ext = path.split(".")[-1]
+    return f"data:image/{ext};base64,{encoded}"
+
+def set_background(path):
+    encoded_bg = img_to_base64(path)
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("{encoded_bg}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
 # --- STRONA LOGOWANIA ---
 if "authentication_status" not in st.session_state:
+    st.markdown(
+            f"""
+            <div class="sidebar-header">
+                <img src="{img_to_base64("logo.png")}"
+                    alt="Moje Logo"
+                    style="width:40%; height:auto; object-fit:contain;">
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
     st.session_state["authentication_status"] = None
     st.session_state["name"] = ""
     st.session_state["username"] = ""
@@ -92,14 +152,14 @@ authenticator = stauth.Authenticate(
     config["cookie"]["expiry_days"],
 )
 
-st.set_page_config(page_title="MovieForMe", page_icon="🎬")
-
 try:
     authenticator.login()
 except LoginError as e:
     st.error(e)
 
 if st.session_state["authentication_status"]:
+    st.set_page_config(layout="wide")
+
     @st.cache_data
     def load_movies():
         df = pd.read_csv("Movies_final_ML.csv")  # WCZYTANIE DANYCH DO ZMIANY Z BAZA
@@ -111,18 +171,8 @@ if st.session_state["authentication_status"]:
         df["popularity"] = pd.to_numeric(df["popularity"], errors="coerce").fillna(0)
         return df[["movieId", "imdbId", "title_year", "title_lower", "poster_path", "vote_average", "genres", "popularity"]]
 
-
+    set_background("login_bg_cut.png")
     movies = load_movies()
-
-
-    def img_to_base64(path):
-        with open(path, "rb") as f:
-            data = f.read()
-        encoded = base64.b64encode(data).decode()
-        ext = path.split(".")[-1]
-        return f"data:image/{ext};base64,{encoded}"
-
-
 
     # --- RATINGS MANAGEMENT ---
     if "ratings" not in st.session_state:
@@ -131,7 +181,15 @@ if st.session_state["authentication_status"]:
 
     def save_rating(movie_id):
         key = f"rate_{movie_id}"
-        st.session_state["ratings"][movie_id] = st.session_state[key]
+        rating = st.session_state[key]
+
+        if rating is None:
+            st.session_state["ratings"].pop(movie_id, None)
+        else:
+            st.session_state["ratings"][movie_id] = {
+                "value": rating,
+                "timestamp": datetime.now()
+            }
 
 
     def schedule_rated_ids_update():
@@ -142,6 +200,7 @@ if st.session_state["authentication_status"]:
             if k.startswith("rate_") and v
         ]
 
+    # --- PAGE NAV ---
     def manual_logout():
         keys_to_clear = [
             "authentication_status", "name", "username",
@@ -154,7 +213,6 @@ if st.session_state["authentication_status"]:
 
         st.rerun()
 
-    # --- PAGE NAV ---
     def reset_page():
         st.session_state.page = 0
 
@@ -204,28 +262,39 @@ if st.session_state["authentication_status"]:
             st.session_state["last_rated_update"] = time.time()
             threading.Thread(target=schedule_rated_ids_update, daemon=True).start()
 
-        rated_ids = [mid for mid, val in st.session_state["ratings"].items() if val is not None]
+        rated_ids = [
+            mid for mid, rating in st.session_state["ratings"].items()
+            if isinstance(rating, dict) and rating.get("value") is not None
+        ]
         positive_ids = {
             mid: rating
             for mid, rating in st.session_state["ratings"].items()
-            if rating is not None and rating >= 3
+            if isinstance(rating, dict) and (rating.get("value") or 0) >= 3
         }
         num_positive = len(positive_ids)
 
         show_only_rated = st.sidebar.checkbox(f"Show only rated: ({len(rated_ids)})")
 
         if show_only_rated:
-            filtered = movies[movies.movieId.isin(rated_ids)]
+            filtered = movies[movies.movieId.isin(rated_ids)].copy()
+
+            filtered["rating_time"] = filtered["movieId"].apply(
+                lambda mid: st.session_state["ratings"][mid]["timestamp"]
+            )
+
+            filtered = filtered.sort_values(by="rating_time", ascending=False)
+
         elif len(search_value) >= MIN_CHARS:
             filtered = movies[movies.title_lower.str.contains(search_value.lower())]
         else:
             filtered = movies
 
-        filtered = filtered.sort_values(
-            by="popularity",
-            ascending=False,
-            na_position="last"
-        )
+        if not show_only_rated:
+            filtered = filtered.sort_values(
+                by="popularity",
+                ascending=False,
+                na_position="last"
+            )
 
         if (prev_mode != show_only_rated) or (prev_search != search_value):
             reset_page()
@@ -262,15 +331,6 @@ if st.session_state["authentication_status"]:
         st.write("")
         st.write("")
         st.write("")
-        st.write("")
-        st.write("")
-        st.write("")
-        st.write("")
-        st.write("")
-        st.write("")
-        st.write("")
-        st.write("")
-        st.write("")
 
         st.markdown(f"Logged in as: **{st.session_state.get('name')}**", unsafe_allow_html=True)
         authenticator.logout("Logout", "sidebar", key="unique_logout_key")
@@ -282,60 +342,85 @@ if st.session_state["authentication_status"]:
 
     n_pages = max(1, -(-len(filtered) // PAGE_SIZE))
 
-    col_prev, col_info, col_next = st.columns([1, 6, 1])
-    with col_prev:
-        st.button("« Prev", on_click=prev_page, disabled=st.session_state.page == 0)
-    with col_next:
-        st.button("Next »", on_click=next_page,
-                  disabled=st.session_state.page >= n_pages - 1)
-
-    col_info.markdown(f"**Page {st.session_state.page + 1}/{n_pages}**", unsafe_allow_html=True)
-
     print(f"SESSION PAGE: {st.session_state.page}")
 
     start = st.session_state.page * PAGE_SIZE
     page_items = filtered.iloc[start:start + PAGE_SIZE]
 
-    # --- GRID ---
-    for i, row in page_items.reset_index(drop=True).iterrows():
-        col_idx = i % NUM_COLS
+    col_prev, col_info, col_next = st.columns([1, 12, 1])
+    with col_prev:
+        st.button("« Prev", on_click=prev_page, disabled=st.session_state.page == 0, use_container_width=True)
+    with col_info:
+        st.markdown(
+            "<div style='text-align:center;font-weight:bold;font-size: 1.2rem;'>"
+            f"Page {st.session_state.page + 1}/{n_pages}"
+            "</div>",
+            unsafe_allow_html=True
+        )
+        st.write("")
+        st.write("")
+        st.write("")
 
-        if col_idx == 0:
-            cols = st.columns(NUM_COLS)
-        with cols[i % NUM_COLS]:
-            st.markdown(f'<div class="movie-card">', unsafe_allow_html=True)
+        # --- GRID ---
+        for i, row in page_items.reset_index(drop=True).iterrows():
+            col_idx = i % NUM_COLS
 
-            if row.poster_path:
-                img_url = TMDB_BASE + row.poster_path
-            else:
-                img_url = img_to_base64("placeholder_600x900.png")
+            if col_idx == 0:
+                cols = st.columns(NUM_COLS)
 
-            imdb_url = IMDB_BASE + row.imdbId + "/"
-            st.markdown(f'<a href="{imdb_url}" target="_blank">'
-                        f'<img src="{img_url}"></a>', unsafe_allow_html=True)
+            with cols[i % NUM_COLS]:
+                if row.poster_path:
+                    img_url = TMDB_BASE + row.poster_path
+                else:
+                    img_url = img_to_base64("placeholder_600x900.png")
 
-            st.markdown(f'<div class="title">{row.title_year}</div>', unsafe_allow_html=True)
+                imdb_url = IMDB_BASE + row.imdbId + "/"
 
-            st.caption(f"Avg. rating: ⭐ {round(row.vote_average, 2)}")
+                rating = st.session_state["ratings"].get(row.movieId)
+                if rating and "timestamp" in rating:
+                    ts = rating["timestamp"].strftime("%Y-%m-%d %H:%M")
+                    rated_html = f'<div class="rated-on">Rated on: {ts}</div>'
+                else:
+                    rated_html = ""
 
-            st.caption(f"Genres: {row.genres}", unsafe_allow_html=True)
+                st.markdown(f"""
+                    <div class="movie-card">
+                        <a>{rated_html}</a>
+                            <a href="{imdb_url}" target="_blank">
+                                <img src="{img_url}">
+                            </a>
+                        <div class="title">{row.title_year}</div>
+                        <div class="genres">Avg. rating: ⭐ {round(row.vote_average, 2)}</div>
+                        <div class="genres">Genres: {row.genres}</div>
+                        <div class="stars-container">
+                    """, unsafe_allow_html=True)
 
-            key = f"rate_{row.movieId}"
-            default = st.session_state["ratings"].get(row.movieId, None)
+                key = f"rate_{row.movieId}"
+                default = st.session_state["ratings"].get(row.movieId, None)
 
-            if key not in st.session_state:
-                st.session_state[key] = default
+                if key not in st.session_state:
+                    st.session_state[key] = default
 
-            st.markdown('<div class="stars-container">', unsafe_allow_html=True)
-            st.feedback(
-                "stars",
-                key=key,
-                on_change=save_rating,
-                args=(row.movieId,)
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
+                col_l, col_c, col_r = st.columns([1, 3, 1])
+                with col_c:
+                    st.feedback(
+                        "stars",
+                        key=key,
+                        on_change=save_rating,
+                        args=(row.movieId,),
+                    )
+
+                st.markdown("</div></div>", unsafe_allow_html=True)
+
+    with col_next:
+        st.button("Next »", on_click=next_page,disabled=st.session_state.page >= n_pages - 1, use_container_width=True)
+
 
 elif st.session_state["authentication_status"] is False:
+    st.set_page_config(layout="centered")
+    set_background("main_bg.png")
     st.error("Nazwa użytkownika lub hasło niepoprawne")
 else:
+    st.set_page_config(layout="centered")
+    set_background("main_bg.png")
     st.warning("Proszę podać nazwę użytkownika i hasło")
