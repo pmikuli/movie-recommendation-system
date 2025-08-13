@@ -20,3 +20,7 @@ data/Movies_clean_Vec_v4_25keywords.parquet
 /cold-start/
 
 *.pth
+/two_tower_model/TEST.ipynb
+/two_tower_model/Two_tower_notebook.ipynb
+/two_tower_model/Two_tower_testowy.ipynb
+/results/
