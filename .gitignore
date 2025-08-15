@@ -6,3 +6,23 @@ __pycache__
 .DS_Store
 
 datasets/*
+/.venv/
+/data/ratings_groupped_ids.parquet
+/data/user_features_clean.parquet
+.idea/vcs.xml
+.idea/misc.xml
+.idea/workspace.xml
+.idea/inspectionProfiles/profiles_settings.xml
+data/Movies_final.csv
+data/Movies_clean_Vec_v4_25keywords.parquet
+/data/old_data_to_few_movies/
+/data/
+/cold-start/
+
+*.pth
+/two_tower_model/TEST.ipynb
+/two_tower_model/Two_tower_notebook.ipynb
+/two_tower_model/Two_tower_testowy.ipynb
+/results/
+.idea/inspectionProfiles/Project_Default.xml
+/.idea
