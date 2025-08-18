@@ -12,6 +12,11 @@ from st_keyup import st_keyup
 import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
+from pathlib import Path
+import os
+
+import recommend
+from two_tower_model import generate_recommendation
 
 st.markdown("""
 <style>
@@ -304,7 +309,10 @@ if st.session_state["authentication_status"]:
         st.markdown('</div>', unsafe_allow_html=True)
 
         btn_recommend = f"Get Recommendations ({num_positive}/{20})"
-        st.progress(num_positive / 20)
+        if num_positive > 19:
+            st.success("You can check your recommendations!")
+        else:
+            st.progress(num_positive / 20)
 
         recommend_btn = st.button(
             btn_recommend,
@@ -313,8 +321,32 @@ if st.session_state["authentication_status"]:
             use_container_width=True
         )
         if recommend_btn and num_positive >= 20:
-            st.success("Generating recommendations based on your liked movies...")
-            # TODO: put recommendation system code here
+            with st.spinner("Generating recommendations..."):
+                BASE_DIR = Path(os.getcwd()).parent
+                DATA_DIR = BASE_DIR / 'data'
+
+                df_users = pd.read_parquet(DATA_DIR / 'user_features_clean_warm.parquet')
+                df_movies = pd.read_csv(DATA_DIR / 'Movies_final_ML.csv')
+                df_LOOCV = pd.read_parquet(DATA_DIR / 'ratings_LOOCV.parquet')
+                df_ratings = pd.read_parquet(DATA_DIR / 'ratings_groupped_20pos.parquet')
+
+                movieId_to_idx = generate_recommendation.get_movies_idx(df_users, df_ratings, df_LOOCV)
+
+                user_tower, device = generate_recommendation.get_user_tower('two_tower_model/user_tower.pth')
+
+                # 1. Prepare the user's feature row
+                # The `recommend` module now contains our new function
+                u_row = recommend.prepare_new_user_features(
+                    st.session_state['ratings'], movies
+                )
+
+                seen_movies = []
+                for movieId, _ in st.session_state['ratings'].items():
+                    seen_movies.append(movieId)
+
+                print(f"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA{seen_movies}")
+                recommendations = generate_recommendation.generate_user_emb_and_find_recommendations(df_movies, movieId_to_idx, user_tower, device, u_row, seen_movies)
+                print(recommendations)
 
         st.write("")
         st.write("")

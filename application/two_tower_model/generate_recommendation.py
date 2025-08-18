@@ -1,16 +1,16 @@
 import torch
-from Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
+from .Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
 from torch.utils.data import DataLoader
-import vectordatabase
+from . import vectordatabase
 import pandas as pd
 from pathlib import Path
 import os
 
-BASE_DIR = Path(os.getcwd()).parent
+BASE_DIR = Path(os.getcwd()).parent.parent
 DATA_DIR = BASE_DIR / 'data'
 EMB_DIM = 64
 
-def get_user_tower():
+def get_user_tower(path):
     location = 'cpu'
     device = torch.device('cpu')
     if torch.cuda.is_available():
@@ -22,11 +22,11 @@ def get_user_tower():
     print('Device:', device)
 
     stats_dim = 25
-    n_items = 82779
+    n_items = 84133
     embedding_dim = EMB_DIM
 
     user_tower = UserTower(stats_dim, n_items, embedding_dim)
-    user_tower.load_state_dict(torch.load('user_tower.pth', map_location=location))
+    user_tower.load_state_dict(torch.load(path, map_location=location))
     user_tower.to(device)
 
     return user_tower, device
@@ -45,7 +45,7 @@ def add_batch_dim(batch):
     else:
         return batch
 
-def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_tower, device, u_row):
+def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_tower, device, u_row, seen_movie_ids):
     print('============')
     print('User data for recommendation generation:')
     print(u_row)
@@ -72,23 +72,32 @@ def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_
     print('Embedding')
     print(user_embedding)
 
+    filter_expression = f"id not in {list(seen_movie_ids)}"
+    print(f"Applying Milvus filter for {len(seen_movie_ids)} seen movies...")
+
     ('============')
 
     user_vector = user_embedding.cpu().tolist()
 
     vectordatabase.connect()
 
-    neighbors = vectordatabase.find_neighbors('movies', user_vector, 20)
+    neighbors = vectordatabase.find_neighbors('movies', user_vector, 20, filter_expression)
 
     print('Neighbors from Milvus:')
     print(neighbors)
     print(len(neighbors))
     print(len(neighbors[0]))
 
+    for movieId in seen_movie_ids:
+        row = df_movies[df_movies['movieId'] == movieId].iloc[0]
+        title = row['title']
+        print(f'Seen movie: movieId: {movieId}, title: {title}')
+
     for i, movieId in enumerate(u_row['movies_seq']):
         row = df_movies[df_movies['movieId'] == movieId].iloc[0]
         rating = u_row['ratings_seq'][i]
-        print(f'Previously rated: movieId: {movieId}, title: {row['title']}, rating: {rating}')
+        title = row['title']
+        print(f'Recently rated: movieId: {movieId}, title: {title}, rating: {rating}')
 
     recommendations = []
     for n in neighbors[0]:
@@ -118,7 +127,7 @@ def get_movies_idx(df_users, df_ratings, df_LOOCV):
     return movieId_to_idx
 
 if __name__ == '__main__':
-    user_tower, device = get_user_tower()
+    user_tower, device = get_user_tower('user_tower.pth')
     print('User Tower loaded')
 
     df_users = pd.read_parquet(DATA_DIR / 'user_features_clean_warm.parquet')
@@ -132,9 +141,19 @@ if __name__ == '__main__':
 
     val_user_ids = df_LOOCV['userId'].tolist()
 
-    userId = val_user_ids[34]
+    userId = val_user_ids[17792]
     print('userId', userId)
     u_row = df_users[df_users['userId'] == userId].iloc[0]
 
-    recommendations = generate_user_emb_and_find_recommendations(df_movies, movieId_to_idx, user_tower, device, u_row)
+    # Filter users recommendations, by seen movies (same as heavyEvaluate masks the seen movies)
+    df_ratings.set_index('userId', inplace=True)
+    current_userId = u_row['userId']
+
+    try:
+        seen_movie_ids = df_ratings.loc[current_userId, 'seen']
+    except KeyError:
+        print(f"Warning: User {current_userId} not found in history file. No filtering applied.")
+        seen_movie_ids = []
+
+    recommendations = generate_user_emb_and_find_recommendations(df_movies, movieId_to_idx, user_tower, device, u_row, seen_movie_ids)
     
