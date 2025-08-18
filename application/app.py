@@ -13,6 +13,8 @@ import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
 
+import recommend
+
 st.markdown("""
 <style>
 div[data-testid="stSidebar"] > div:first-child {
@@ -315,6 +317,7 @@ if st.session_state["authentication_status"]:
         if recommend_btn and num_positive >= 20:
             st.success("Generating recommendations based on your liked movies...")
             # TODO: put recommendation system code here
+            recommend.prepare_user_data_for_rec_generation(st.session_state['ratings'], movies)
 
         st.write("")
         st.write("")
