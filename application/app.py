@@ -306,7 +306,10 @@ if st.session_state["authentication_status"]:
         st.markdown('</div>', unsafe_allow_html=True)
 
         btn_recommend = f"Get Recommendations ({num_positive}/{20})"
-        st.progress(num_positive / 20)
+        if num_positive > 19:
+            st.success("You can check your recommendations!")
+        else:
+            st.progress(num_positive / 20)
 
         recommend_btn = st.button(
             btn_recommend,
@@ -315,9 +318,14 @@ if st.session_state["authentication_status"]:
             use_container_width=True
         )
         if recommend_btn and num_positive >= 20:
-            st.success("Generating recommendations based on your liked movies...")
+            with st.spinner("Generating recommendations..."):
             # TODO: put recommendation system code here
-            recommend.prepare_user_data_for_rec_generation(st.session_state['ratings'], movies)
+            # recommend.prepare_user_data_for_rec_generation(st.session_state['ratings'], movies)
+                # 1. Prepare the user's feature row
+                # The `recommend` module now contains our new function
+                u_row = recommend.prepare_new_user_features(
+                    st.session_state['ratings'], movies
+                )
 
         st.write("")
         st.write("")
