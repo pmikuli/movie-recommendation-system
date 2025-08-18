@@ -7,10 +7,17 @@ name = "pypi"
 pymilvus = "*"
 pymongo = "*"
 pandas = "*"
-numpy = "*"
 torch = "*"
 tables = "*"
 fastparquet = "*"
+pyarrow = "*"
+streamlit = "*"
+streamlit-keyup = "*"
+streamlit-authenticator = "*"
+faiss-cpu = "*"
+joblib = "*"
+scikit-learn = "*"
+numpy = "==1.26.4"
 
 [dev-packages]
 

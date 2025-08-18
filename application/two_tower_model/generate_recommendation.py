@@ -1,7 +1,7 @@
 import torch
-from Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
+from two_tower_model.Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
 from torch.utils.data import DataLoader
-import vectordatabase
+from two_tower_model import vectordatabase
 import pandas as pd
 from pathlib import Path
 import os
@@ -10,7 +10,7 @@ BASE_DIR = Path(os.getcwd()).parent
 DATA_DIR = BASE_DIR / 'data'
 EMB_DIM = 64
 
-def get_user_tower():
+def get_user_tower(path):
     location = 'cpu'
     device = torch.device('cpu')
     if torch.cuda.is_available():
@@ -26,7 +26,7 @@ def get_user_tower():
     embedding_dim = EMB_DIM
 
     user_tower = UserTower(stats_dim, n_items, embedding_dim)
-    user_tower.load_state_dict(torch.load('user_tower.pth', map_location=location))
+    user_tower.load_state_dict(torch.load(path, map_location=location))
     user_tower.to(device)
 
     return user_tower, device
@@ -127,7 +127,7 @@ def get_movies_idx(df_users, df_ratings, df_LOOCV):
     return movieId_to_idx
 
 if __name__ == '__main__':
-    user_tower, device = get_user_tower()
+    user_tower, device = get_user_tower('user_tower.pth')
     print('User Tower loaded')
 
     df_users = pd.read_parquet(DATA_DIR / 'user_features_clean_warm.parquet')
