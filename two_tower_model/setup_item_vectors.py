@@ -26,8 +26,8 @@ def get_item_tower():
     embedding_dim = EMB_DIM
     dense_feat_dim = 24
     text_emb_dim = 300
-    num_actors = 11465
-    num_directors = 5163
+    num_actors = 11606
+    num_directors = 5240
     num_genres = 20
     vocab_sizes = (num_actors, num_directors, num_genres)
 

@@ -24,7 +24,7 @@ def insert_vector(collection, vector):
 def query(collection):
     return _client.query(collection, "id >= 0", limit=5)
 
-def find_neighbors(collection, vector, k=10):
+def find_neighbors(collection, vector, k=10, filter_expression=None):
     search_params = {
         "metric_type": "COSINE",  # or "L2" if you use Euclidean
         "params": {"nprobe": 10}  # controls search scope
@@ -35,7 +35,8 @@ def find_neighbors(collection, vector, k=10):
         data=vector,         # List of query vectors
         anns_field="vector",     # Field name in Milvus where vectors are stored
         search_params=search_params,
-        limit=k
+        limit=k,
+        filter=filter_expression
     )
 
     return results
