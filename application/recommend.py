@@ -91,9 +91,9 @@ def prepare_new_user_features(ratings_dict: dict, df_movies: pd.DataFrame):
         'type_of_viewer_negative': type_of_viewer_negative,
         'type_of_viewer_neutral': type_of_viewer_neutral,
         'type_of_viewer_positive': type_of_viewer_positive,
-        'movies_seq': [movies_seq],
-        'ratings_seq': [ratings_seq],
-        'ts_seq': [ts_seq],
+        'movies_seq': movies_seq,
+        'ratings_seq': ratings_seq,
+        'ts_seq': ts_seq,
     }])
 
     # Normalizacja ostatnia

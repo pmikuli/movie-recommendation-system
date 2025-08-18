@@ -1,12 +1,12 @@
 import torch
-from two_tower_model.Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
+from .Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
 from torch.utils.data import DataLoader
-from two_tower_model import vectordatabase
+from . import vectordatabase
 import pandas as pd
 from pathlib import Path
 import os
 
-BASE_DIR = Path(os.getcwd()).parent
+BASE_DIR = Path(os.getcwd()).parent.parent
 DATA_DIR = BASE_DIR / 'data'
 EMB_DIM = 64
 
@@ -45,7 +45,7 @@ def add_batch_dim(batch):
     else:
         return batch
 
-def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_tower, device, u_row, seen_movies_ids):
+def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_tower, device, u_row, seen_movie_ids):
     print('============')
     print('User data for recommendation generation:')
     print(u_row)
