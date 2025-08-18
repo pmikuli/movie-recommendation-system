@@ -45,7 +45,7 @@ def add_batch_dim(batch):
     else:
         return batch
 
-def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_tower, device, u_row, df_history):
+def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_tower, device, u_row, seen_movies_ids):
     print('============')
     print('User data for recommendation generation:')
     print(u_row)
@@ -71,16 +71,6 @@ def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_
 
     print('Embedding')
     print(user_embedding)
-
-    # Filter users recommendations, by seen movies (same as heavyEvaluate masks the seen movies)
-    df_history.set_index('userId', inplace=True)
-    current_userId = u_row['userId']
-
-    try:
-        seen_movie_ids = df_history.loc[current_userId, 'seen']
-    except KeyError:
-        print(f"Warning: User {current_userId} not found in history file. No filtering applied.")
-        seen_movie_ids = []
 
     filter_expression = f"id not in {list(seen_movie_ids)}"
     print(f"Applying Milvus filter for {len(seen_movie_ids)} seen movies...")
@@ -155,5 +145,15 @@ if __name__ == '__main__':
     print('userId', userId)
     u_row = df_users[df_users['userId'] == userId].iloc[0]
 
-    recommendations = generate_user_emb_and_find_recommendations(df_movies, movieId_to_idx, user_tower, device, u_row, df_ratings)
+    # Filter users recommendations, by seen movies (same as heavyEvaluate masks the seen movies)
+    df_ratings.set_index('userId', inplace=True)
+    current_userId = u_row['userId']
+
+    try:
+        seen_movie_ids = df_ratings.loc[current_userId, 'seen']
+    except KeyError:
+        print(f"Warning: User {current_userId} not found in history file. No filtering applied.")
+        seen_movie_ids = []
+
+    recommendations = generate_user_emb_and_find_recommendations(df_movies, movieId_to_idx, user_tower, device, u_row, seen_movie_ids)
     
