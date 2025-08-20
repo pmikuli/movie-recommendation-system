@@ -280,6 +280,11 @@ if st.session_state["authentication_status"]:
 
         show_only_rated = st.sidebar.checkbox(f"Show only rated: ({len(rated_ids)})")
 
+        if (prev_mode != show_only_rated) or (prev_search != search_value):
+            if 'recommendations' in st.session_state:
+                del st.session_state['recommendations']
+            reset_page()
+
         if show_only_rated:
             filtered = movies[movies.movieId.isin(rated_ids)].copy()
 
@@ -336,17 +341,18 @@ if st.session_state["authentication_status"]:
 
                 # 1. Prepare the user's feature row
                 # The `recommend` module now contains our new function
-                u_row = recommend.prepare_new_user_features(
-                    st.session_state['ratings'], movies
-                )
+                u_row = recommend.prepare_new_user_features(st.session_state['ratings'], movies)
 
                 seen_movies = []
                 for movieId, _ in st.session_state['ratings'].items():
                     seen_movies.append(movieId)
+                print(f"Seen movies:{seen_movies}")
 
-                print(f"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA{seen_movies}")
-                recommendations = generate_recommendation.generate_user_emb_and_find_recommendations(df_movies, movieId_to_idx, user_tower, device, u_row, seen_movies)
+                recommendations = generate_recommendation.generate_user_emb_and_find_recommendations(df_movies,movieId_to_idx,user_tower, device,u_row, seen_movies)
                 print(recommendations)
+
+                st.session_state['recommendations'] = recommendations
+                st.rerun()
 
         st.write("")
         st.write("")
@@ -368,90 +374,137 @@ if st.session_state["authentication_status"]:
         authenticator.logout("Logout", "sidebar", key="unique_logout_key")
 
     # --- MAIN PAGE ---
-
     if "page" not in st.session_state:
         reset_page()
 
-    n_pages = max(1, -(-len(filtered) // PAGE_SIZE))
-    start = st.session_state.page * PAGE_SIZE
-    page_items = filtered.iloc[start:start + PAGE_SIZE]
+    # --- RECOMMENDATIONS PAGE ---
+    if 'recommendations' in st.session_state and st.session_state['recommendations']:
+        st.header("Your Top Recommendations")
 
-    col_prev, col_info, col_next = st.columns([1, 12, 1])
-    with col_prev:
-        st.button("« Prev", on_click=prev_page, disabled=st.session_state.page == 0, use_container_width=True)
-    with col_info:
-        st.markdown(
-            "<div style='text-align:center;font-weight:bold;font-size: 1.2rem;'>"
-            f"Page {st.session_state.page + 1}/{n_pages}"
-            "</div>",
-            unsafe_allow_html=True
-        )
-        st.write("")
-        st.write("")
-        st.write("")
+        recommended_ids = st.session_state['recommendations']
+        recommended_ids_ordered = [rec['movieId'] for rec in recommended_ids]
 
-        # --- GRID ---
-        for i, row in page_items.reset_index(drop=True).iterrows():
-            col_idx = i % NUM_COLS
+        recs_df = movies[movies['movieId'].isin(recommended_ids_ordered)].copy()
 
-            if col_idx == 0:
-                cols = st.columns(NUM_COLS)
+        # Order of recommendations
+        recs_df['movieId'] = pd.Categorical(recs_df['movieId'], categories=recommended_ids_ordered, ordered=True)
+        recs_df = recs_df.sort_values('movieId')
 
-            with cols[i % NUM_COLS]:
+        top_4_recs = recs_df.head(5)
+        remaining_recs = recs_df.iloc[5:]
+
+        cols = st.columns(5)
+        for i, (_, row) in enumerate(top_4_recs.iterrows()):
+            with cols[i]:
                 if row.poster_path:
                     img_url = TMDB_BASE + row.poster_path
                 else:
                     img_url = img_to_base64("placeholder_600x900.png")
-
                 imdb_url = IMDB_BASE + row.imdbId + "/"
 
-                rating = st.session_state["ratings"].get(row.movieId)
-                if rating and "timestamp" in rating:
-                    ts = rating["timestamp"].strftime("%Y-%m-%d %H:%M")
-                    rated_html = f'<div class="rated-on">Rated on: {ts}</div>'
-                else:
-                    rated_html = ""
-
                 st.markdown(f"""
-                    <div class="movie-card">
-                        <a>{rated_html}</a>
-                            <a href="{imdb_url}" target="_blank">
-                                <img src="{img_url}">
-                            </a>
-                        <div class="title">{row.title_year}</div>
-                        <div class="genres">Avg. rating: ⭐ {round(row.vote_average, 2)}</div>
-                        <div class="genres">Genres: {row.genres}</div>
-                        <div class="stars-container">
-                    """, unsafe_allow_html=True)
+                    <h1>{i+1}.</h1>
+                       <div class="movie-card">
+                           <a href="{imdb_url}" target="_blank">
+                               <img src="{img_url}">
+                           </a>
+                           <div class="title">{row.title_year}</div>
+                           <div class="genres">Avg. rating: ⭐ {round(row.vote_average, 2)}</div>
+                           <div class="genres">Genres: {row.genres}</div>
+                       </div>
+                       """, unsafe_allow_html=True)
 
-                key = f"rate_{row.movieId}"
-                rating_data = st.session_state["ratings"].get(row.movieId, None)
+        if not remaining_recs.empty:
+            with st.expander("See more recommendations..."):
+                for _, row in remaining_recs.iterrows():
+                    st.write(f"- {row['title_year']}")
 
-                default_value = None
-                if isinstance(rating_data, dict):
-                    default_value = rating_data.get("value")
+        if st.button("Back to Browsing"):
+            del st.session_state['recommendations']
+            st.rerun()
 
-                if key not in st.session_state:
-                    st.session_state[key] = default_value
+    else:
+        # --- STANDARD APP PAGE ---
+        n_pages = max(1, -(-len(filtered) // PAGE_SIZE))
+        start = st.session_state.page * PAGE_SIZE
+        page_items = filtered.iloc[start:start + PAGE_SIZE]
 
-                col_l, col_c, col_r = st.columns([1, 3, 1])
-                with col_c:
-                    st.feedback(
-                        "stars",
-                        key=key,
-                        on_change=save_rating,
-                        args=(row.movieId,),
-                    )
+        col_prev, col_info, col_next = st.columns([1, 12, 1])
+        with col_prev:
+            st.button("« Prev", on_click=prev_page, disabled=st.session_state.page == 0, use_container_width=True)
+        with col_info:
+            st.markdown(
+                "<div style='text-align:center;font-weight:bold;font-size: 1.2rem;'>"
+                f"Page {st.session_state.page + 1}/{n_pages}"
+                "</div>",
+                unsafe_allow_html=True
+            )
+            st.write("")
+            st.write("")
+            st.write("")
 
-                st.markdown("</div></div>", unsafe_allow_html=True)
+            # --- GRID ---
+            for i, row in page_items.reset_index(drop=True).iterrows():
+                col_idx = i % NUM_COLS
 
-    with col_next:
-        st.button("Next »", on_click=next_page,disabled=st.session_state.page >= n_pages - 1, use_container_width=True)
+                if col_idx == 0:
+                    cols = st.columns(NUM_COLS)
 
-    print(f"SESSION PAGE: {st.session_state.page}")
+                with cols[i % NUM_COLS]:
+                    if row.poster_path:
+                        img_url = TMDB_BASE + row.poster_path
+                    else:
+                        img_url = img_to_base64("placeholder_600x900.png")
 
-    start = st.session_state.page * PAGE_SIZE
-    page_items = filtered.iloc[start:start + PAGE_SIZE]
+                    imdb_url = IMDB_BASE + row.imdbId + "/"
+
+                    rating = st.session_state["ratings"].get(row.movieId)
+                    if rating and "timestamp" in rating:
+                        ts = rating["timestamp"].strftime("%Y-%m-%d %H:%M")
+                        rated_html = f'<div class="rated-on">Rated on: {ts}</div>'
+                    else:
+                        rated_html = ""
+
+                    st.markdown(f"""
+                        <div class="movie-card">
+                            <a>{rated_html}</a>
+                                <a href="{imdb_url}" target="_blank">
+                                    <img src="{img_url}">
+                                </a>
+                            <div class="title">{row.title_year}</div>
+                            <div class="genres">Avg. rating: ⭐ {round(row.vote_average, 2)}</div>
+                            <div class="genres">Genres: {row.genres}</div>
+                            <div class="stars-container">
+                        """, unsafe_allow_html=True)
+
+                    key = f"rate_{row.movieId}"
+                    rating_data = st.session_state["ratings"].get(row.movieId, None)
+
+                    default_value = None
+                    if isinstance(rating_data, dict):
+                        default_value = rating_data.get("value")
+
+                    if key not in st.session_state:
+                        st.session_state[key] = default_value
+
+                    col_l, col_c, col_r = st.columns([1, 3, 1])
+                    with col_c:
+                        st.feedback(
+                            "stars",
+                            key=key,
+                            on_change=save_rating,
+                            args=(row.movieId,),
+                        )
+
+                    st.markdown("</div></div>", unsafe_allow_html=True)
+
+        with col_next:
+            st.button("Next »", on_click=next_page,disabled=st.session_state.page >= n_pages - 1, use_container_width=True)
+
+        print(f"SESSION PAGE: {st.session_state.page}")
+
+        start = st.session_state.page * PAGE_SIZE
+        page_items = filtered.iloc[start:start + PAGE_SIZE]
 
 
 elif st.session_state["authentication_status"] is False:
