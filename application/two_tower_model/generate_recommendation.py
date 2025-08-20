@@ -1,7 +1,7 @@
 import torch
-from .Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
+from Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
 from torch.utils.data import DataLoader
-from . import vectordatabase
+import vectordatabase
 import pandas as pd
 from pathlib import Path
 import os
@@ -141,7 +141,7 @@ if __name__ == '__main__':
 
     val_user_ids = df_LOOCV['userId'].tolist()
 
-    userId = val_user_ids[17792]
+    userId = val_user_ids[3789]
     print('userId', userId)
     u_row = df_users[df_users['userId'] == userId].iloc[0]
 
