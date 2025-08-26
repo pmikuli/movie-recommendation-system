@@ -1,7 +1,7 @@
 import torch
-from Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
+from .Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
 from torch.utils.data import DataLoader
-import vectordatabase
+from . import vectordatabase
 import pandas as pd
 from pathlib import Path
 import os
@@ -45,7 +45,7 @@ def add_batch_dim(batch):
     else:
         return batch
 
-def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_tower, device, u_row, seen_movie_ids):
+def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_tower, device, u_row, seen_movie_ids, TOP_N):
     print('============')
     print('User data for recommendation generation:')
     print(u_row)
@@ -81,7 +81,7 @@ def generate_user_emb_and_find_recommendations(df_movies, movieIdx_to_idx, user_
 
     vectordatabase.connect()
 
-    neighbors = vectordatabase.find_neighbors('movies', user_vector, 20, filter_expression)
+    neighbors = vectordatabase.find_neighbors('movies', user_vector, TOP_N, filter_expression)
 
     print('Neighbors from Milvus:')
     print(neighbors)
@@ -155,5 +155,5 @@ if __name__ == '__main__':
         print(f"Warning: User {current_userId} not found in history file. No filtering applied.")
         seen_movie_ids = []
 
-    recommendations = generate_user_emb_and_find_recommendations(df_movies, movieId_to_idx, user_tower, device, u_row, seen_movie_ids)
+    recommendations = generate_user_emb_and_find_recommendations(df_movies, movieId_to_idx, user_tower, device, u_row, seen_movie_ids, 20)
     

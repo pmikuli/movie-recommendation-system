@@ -339,19 +339,29 @@ if st.session_state["authentication_status"]:
 
                 user_tower, device = generate_recommendation.get_user_tower('two_tower_model/user_tower.pth')
 
-                # 1. Prepare the user's feature row
-                # The `recommend` module now contains our new function
-                u_row = recommend.prepare_new_user_features(st.session_state['ratings'], movies)
+                u_row, top_genre = recommend.prepare_new_user_features(st.session_state['ratings'], movies)
 
                 seen_movies = []
                 for movieId, _ in st.session_state['ratings'].items():
                     seen_movies.append(movieId)
                 print(f"Seen movies:{seen_movies}")
 
-                recommendations = generate_recommendation.generate_user_emb_and_find_recommendations(df_movies,movieId_to_idx,user_tower, device,u_row, seen_movies)
-                print(recommendations)
+                recommendations_ids = generate_recommendation.generate_user_emb_and_find_recommendations(df_movies,movieId_to_idx,user_tower, device,u_row, seen_movies, 100)
+                print(recommendations_ids)
 
-                st.session_state['recommendations'] = recommendations
+                candidate_ids = [r['movieId'] for r in recommendations_ids]
+                reranked_ids = recommend.rerank_for_personalization(
+                    candidate_ids,
+                    top_genre,
+                    movies,
+                    final_k=20
+                )
+
+                id2dict = {r['movieId']: r for r in recommendations_ids}
+                final_recs = [id2dict[mid] for mid in reranked_ids if mid in id2dict]
+
+                st.session_state['recommendations'] = final_recs
+                # st.session_state['recommendations'] = recommendations_ids
                 st.rerun()
 
         st.write("")

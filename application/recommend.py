@@ -59,6 +59,17 @@ def prepare_new_user_features(ratings_dict: dict, df_movies: pd.DataFrame):
         genre_name = col.replace("genre_", "")
         genre_features[col] = avg_genre_ratings.get(genre_name, avg_rating)
 
+    user_specific_genre_ratings = {
+        genre.replace("genre_", ""): rating
+        for genre, rating in genre_features.items()
+        if rating != avg_rating
+    }
+    top_genre = None
+    if user_specific_genre_ratings:
+        top_genre = max(user_specific_genre_ratings, key=user_specific_genre_ratings.get)
+
+    print(f"User's top genre identified as: '{top_genre}'")
+
     # Type of Viewer
     if avg_rating >= 4.0:
         viewer_type = "positive"
@@ -101,4 +112,56 @@ def prepare_new_user_features(ratings_dict: dict, df_movies: pd.DataFrame):
     final_user_row[stats_cols_to_normalize] = scaler.transform(final_user_row[stats_cols_to_normalize])
 
     print(final_user_row.iloc[0])
-    return final_user_row.iloc[0]
+    return final_user_row.iloc[0], top_genre
+
+def rerank_for_personalization(recommendations: list,top_genre: str,df_movies: pd.DataFrame,final_k: int = 20):
+    """
+    Re-rank bustujacy filmy wedle najlepiej ocenianego gatunku
+    """
+    if not top_genre:
+        print("No genre found. Standard ranking.")
+        return recommendations[:final_k]
+
+    recs_df = df_movies[df_movies['movieId'].isin(recommendations)].copy()
+    recs_df['genres_list'] = recs_df['genres'].fillna('').astype(str).apply(lambda x: [g.strip() for g in x.split(',')])
+    recs_df['is_top_genre'] = recs_df['genres_list'].apply(lambda genres: top_genre in genres)
+
+    candidate_top_genre = recs_df[recs_df['is_top_genre']]['movieId'].tolist()
+    candidate_others = recs_df[~recs_df['is_top_genre']]['movieId'].tolist()
+
+    original_order_map = {mid: i for i, mid in enumerate(recommendations)}
+    candidate_top_genre.sort(key=lambda mid: original_order_map[mid])
+    candidate_others.sort(key=lambda mid: original_order_map[mid])
+
+    print(f"Found {len(candidate_top_genre)} candidates in top genre '{top_genre}' and {len(candidate_others)} others.")
+
+    final_recs = []
+    iter_top_genre = iter(candidate_top_genre)
+    iter_others = iter(candidate_others)
+
+    while len(final_recs) < final_k:
+        # Add 2 from the top genre
+        try:
+            final_recs.append(next(iter_top_genre))
+            if len(final_recs) < final_k:
+                final_recs.append(next(iter_top_genre))
+        except StopIteration:
+            pass
+
+        # Add 1 from the others
+        try:
+            if len(final_recs) < final_k:
+                final_recs.append(next(iter_others))
+        except StopIteration:
+            pass
+
+        if len(final_recs) == len(set(final_recs)):
+            if len(candidate_top_genre) + len(candidate_others) == len(final_recs):
+                break
+
+    if len(final_recs) < final_k:
+        remaining_pool = [rec for rec in candidate_others if rec not in final_recs]
+        final_recs.extend(remaining_pool)
+
+    print('Recommendations re-ranked by top genre.')
+    return final_recs[:final_k]
