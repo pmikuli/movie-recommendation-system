@@ -208,6 +208,7 @@ class TwoTowerDataset(Dataset):
         self.max_len_g = max_len_g
 
         self.negative_sampler = negative_sampler
+        # self.negative_sampler = set(df_movies.index)
 
     def __len__(self):
         return len(self.df_users)
@@ -220,7 +221,8 @@ class TwoTowerDataset(Dataset):
 
         user_data = self.df_ratings.loc[user_id]
         pos_list = user_data['pos']
-        # seen_set = set(user_data['seen'])
+        # seen_set = user_data['seen']
+        # neg_list = self.negative_sampler - set(seen_set)
 
         if not pos_list:
             raise ValueError(f"Użytkownik {user_id} nie ma pozytywnych ratingów!")
@@ -228,6 +230,7 @@ class TwoTowerDataset(Dataset):
         # --- BPR ---
         pos_id = random.choice(pos_list)
         neg_ids = self.negative_sampler.sample(user_id, pos_id, self.k_negatives)
+        # neg_ids = random.sample(neg_list, k=self.k_negatives)
 
         # --- DEBUG ---
         assert pos_id not in neg_ids,                       f"Wylosowałeś negatyw równy pozytywowi {user_id}!"
@@ -839,7 +842,7 @@ def prepare():
         print("Current device:", torch.cuda.current_device(), torch.cuda.get_device_name(0))
 
     # ---------- DATA LOADING ----------
-    BASE_DIR = Path(os.getcwd()).parent
+    BASE_DIR = Path(os.getcwd()).parent.parent
     DATA_DIR = BASE_DIR / "data"
 
     df_users = pd.read_parquet(DATA_DIR / 'user_features_clean_warm.parquet')
