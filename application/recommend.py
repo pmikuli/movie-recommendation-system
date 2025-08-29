@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime
 from pathlib import Path
 import torch
+from scipy.sparse import csr_matrix
 
 import os
 
@@ -12,6 +13,8 @@ print("--- Loading recommendation artifacts... ---")
 BASE_DIR = Path(os.getcwd()).parent
 DATA_DIR = BASE_DIR / "data"
 MODEL_DIR = BASE_DIR / "two_tower_model"
+
+MOVIE_COUNT_IN_CF_DATASET = 84124
 
 scaler = joblib.load(DATA_DIR / 'ratings-scaler.joblib')
 age_days_scaler = joblib.load(DATA_DIR / 'age-days-scaler.joblib')
@@ -102,3 +105,19 @@ def prepare_new_user_features(ratings_dict: dict, df_movies: pd.DataFrame):
 
     print(final_user_row.iloc[0])
     return final_user_row.iloc[0]
+
+def prepare_collaborative_filtering_data(ratings: dict, movieId_to_idx: dict):
+    print(ratings)
+
+    cols = [movieId_to_idx[movieId] for movieId in ratings.keys()]
+    data = [val['value']+1.0 for val in ratings.values()]
+    rows = [0] * len(data)
+    
+    sparse_matrix = csr_matrix((data, (rows, cols)), shape=(1, MOVIE_COUNT_IN_CF_DATASET))
+
+    # for debugging
+    triplets = zip(*sparse_matrix.nonzero(), sparse_matrix.data)
+    for r, c, v in list(triplets)[:5]:
+        print(f"Row {r}, Col {c} → {v}")
+
+    return sparse_matrix

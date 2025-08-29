@@ -18,6 +18,8 @@ import os
 import recommend
 from two_tower_model import generate_recommendation
 
+import implicit
+
 st.markdown("""
 <style>
 div[data-testid="stSidebar"] > div:first-child {
@@ -100,6 +102,8 @@ MIN_CHARS = 2
 
 TMDB_BASE = "https://image.tmdb.org/t/p/w600_and_h900_bestv2"
 IMDB_BASE = "https://www.imdb.com/title/"
+
+USE_CF = True
 
 # --- USTAWIENIA STRONY ---
 st.set_page_config(page_title="MovieForMe", page_icon="🎬")
@@ -336,22 +340,44 @@ if st.session_state["authentication_status"]:
                 df_ratings = pd.read_parquet(DATA_DIR / 'ratings_groupped_20pos.parquet')
 
                 movieId_to_idx = generate_recommendation.get_movies_idx(df_users, df_ratings, df_LOOCV)
+                idx_to_movieId = {v: k for k, v in movieId_to_idx.items()}
 
-                user_tower, device = generate_recommendation.get_user_tower('two_tower_model/user_tower.pth')
+                if not USE_CF:
+                    user_tower, device = generate_recommendation.get_user_tower('two_tower_model/user_tower.pth')
 
-                # 1. Prepare the user's feature row
-                # The `recommend` module now contains our new function
-                u_row = recommend.prepare_new_user_features(st.session_state['ratings'], movies)
+                    # 1. Prepare the user's feature row
+                    # The `recommend` module now contains our new function
+                    u_row = recommend.prepare_new_user_features(st.session_state['ratings'], movies)
 
-                seen_movies = []
-                for movieId, _ in st.session_state['ratings'].items():
-                    seen_movies.append(movieId)
-                print(f"Seen movies:{seen_movies}")
+                    seen_movies = []
+                    for movieId, _ in st.session_state['ratings'].items():
+                        seen_movies.append(movieId)
+                    print(f"Seen movies:{seen_movies}")
 
-                recommendations = generate_recommendation.generate_user_emb_and_find_recommendations(df_movies,movieId_to_idx,user_tower, device,u_row, seen_movies)
-                print(recommendations)
+                    recommendations = generate_recommendation.generate_user_emb_and_find_recommendations(df_movies,movieId_to_idx,user_tower, device,u_row, seen_movies)
+                    print(recommendations)
 
-                st.session_state['recommendations'] = recommendations
+                    st.session_state['recommendations'] = recommendations
+                else:
+                    ratings = st.session_state['ratings']
+
+                    data = recommend.prepare_collaborative_filtering_data(ratings, movieId_to_idx)
+
+                    als_model = implicit.als.AlternatingLeastSquares().load('../CF_model/collaborative_filtering.npz')
+
+                    recommendations, scores = als_model.recommend(
+                        userid=0,
+                        user_items=data,
+                        N=20,
+                        filter_already_liked_items=True
+                    )
+
+                    recommendations = [{'movieId': idx_to_movieId[id]} for id in recommendations]
+                    print(recommendations)
+
+                    st.session_state['recommendations'] = recommendations
+                    
+
                 st.rerun()
 
         st.write("")
