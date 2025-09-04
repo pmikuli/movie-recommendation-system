@@ -107,13 +107,16 @@ def prepare_new_user_features(ratings_dict: dict, df_movies: pd.DataFrame):
     return final_user_row.iloc[0]
 
 def prepare_collaborative_filtering_data(ratings: dict, movieId_to_idx: dict):
-    print(ratings)
+    print('Ratings:', ratings)
+    print(f'movieId_to_idx: {len(movieId_to_idx)}, MOVIE_COUNT_IN_CF_DATASET: {MOVIE_COUNT_IN_CF_DATASET}')
+    assert len(movieId_to_idx) == MOVIE_COUNT_IN_CF_DATASET
 
     cols = [movieId_to_idx[movieId] for movieId in ratings.keys()]
-    data = [val['value']+1.0 for val in ratings.values()]
+    data = [(val['value']+1.0) / 5.0 for val in ratings.values()]
     rows = [0] * len(data)
     
     sparse_matrix = csr_matrix((data, (rows, cols)), shape=(1, MOVIE_COUNT_IN_CF_DATASET))
+    print('Sparse matrix shape', sparse_matrix.shape)
 
     # for debugging
     triplets = zip(*sparse_matrix.nonzero(), sparse_matrix.data)
