@@ -5,7 +5,6 @@ name = "pypi"
 
 [packages]
 pymilvus = "*"
-pymongo = "*"
 pandas = "*"
 torch = "*"
 tables = "*"
