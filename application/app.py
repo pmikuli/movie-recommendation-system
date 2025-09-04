@@ -103,7 +103,7 @@ MIN_CHARS = 2
 TMDB_BASE = "https://image.tmdb.org/t/p/w600_and_h900_bestv2"
 IMDB_BASE = "https://www.imdb.com/title/"
 
-USE_CF = True
+USE_CF = False
 
 # --- USTAWIENIA STRONY ---
 st.set_page_config(page_title="MovieForMe", page_icon="🎬")
