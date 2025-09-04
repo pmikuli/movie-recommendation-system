@@ -19,7 +19,10 @@ data/Movies_clean_Vec_v4_25keywords.parquet
 /data/
 /cold-start/
 
+# neural network models
 *.pth
+*.pt
+
 /two_tower_model/TEST.ipynb
 /two_tower_model/Two_tower_notebook.ipynb
 /two_tower_model/Two_tower_testowy.ipynb
@@ -28,3 +31,6 @@ data/Movies_clean_Vec_v4_25keywords.parquet
 /.idea
 
 .idea
+
+# collaborative filtering uses npz format
+*.npz
