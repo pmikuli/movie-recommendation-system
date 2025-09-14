@@ -1,7 +1,7 @@
 import torch
-from Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
+from two_tower_model.Optimized_Two_Tower import UserTower, NegativeSampler, TwoTowerDataset, collate_TT, build_faiss_index_for_movies, prepare, to_device, collect_user_features
 from torch.utils.data import DataLoader
-import vectordatabase
+from two_tower_model import vectordatabase
 import pandas as pd
 from pathlib import Path
 import os
